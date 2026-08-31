@@ -1,0 +1,661 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>勇者課堂：科學大富翁 RPG (平板專用版)</title>
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Noto+Sans+TC:wght@400;700;900&display=swap" rel="stylesheet">
+    <style>
+        /* === RPG 風格變數與基礎設定 === */
+        :root { 
+            --wood-bg: #2d1b15; --wood-border: #4a2f24; 
+            --gold: #fbbf24; --text-light: #fef3c7; 
+            --pixel-border: 4px solid var(--wood-border); 
+            --font-main: 'Noto Sans TC', sans-serif; 
+        }
+        * { box-sizing: border-box; user-select: none; }
+        body { 
+            margin: 0; padding: 0; font-family: var(--font-main); 
+            background: #111; color: var(--text-light); 
+            height: 100vh; width: 100vw; overflow: hidden; /* 鎖死在一頁，禁止滾動 */
+            display: flex; justify-content: center; align-items: center;
+        }
+
+        /* === 按鈕與 UI 元件 === */
+        .rpg-panel { 
+            background: var(--wood-bg); border: 4px solid #1a0f0c; 
+            box-shadow: inset 0 0 10px #000, 4px 4px 0 #000; 
+            border-radius: 8px; position: relative;
+        }
+        .rpg-btn { 
+            font-family: var(--font-main); font-weight: 900; font-size: 1.5vh; 
+            padding: 1.2vh 2vh; background: linear-gradient(180deg, #d97706, #b45309); 
+            color: #fff; border: 3px solid #78350f; border-radius: 6px; 
+            box-shadow: 0 4px 0 #451a03; cursor: pointer; text-shadow: 1px 1px 0 #000;
+            display: inline-flex; justify-content: center; align-items: center; gap: 0.5vw;
+        }
+        .rpg-btn:active { transform: translateY(4px); box-shadow: 0 0 0 #451a03; }
+        .rpg-btn:disabled { filter: grayscale(100%); cursor: not-allowed; transform: none; box-shadow: 0 4px 0 #333; }
+        .rpg-btn.danger { background: linear-gradient(180deg, #e11d48, #9f1239); border-color: #4c0519; box-shadow: 0 4px 0 #22020b; }
+
+        .screen { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; display: none; flex-direction: column; align-items: center; justify-content: center; z-index: 10; padding: 2vh; }
+        .screen.active { display: flex; }
+
+        /* === 畫面 0 & 1：大廳與報到 === */
+        #screen-classes, #screen-lobby { background: radial-gradient(circle at center, #1e1b4b, #000); }
+        .lobby-container { width: 70vw; max-width: 800px; padding: 3vh; text-align: center; max-height: 90vh; overflow-y: auto; }
+        .lobby-container h1 { font-size: 4vh; color: var(--gold); text-shadow: 2px 2px 0 #000; margin: 0 0 2vh 0; }
+        
+        .char-grid { display: grid; grid-template-columns: repeat(8, 1fr); gap: 1vh; margin: 2vh 0; background: rgba(0,0,0,0.4); padding: 2vh; border-radius: 8px; border: 2px dashed #b45309; }
+        .char-opt { font-size: 4vh; cursor: pointer; padding: 1vh; text-align: center; border: 2px solid transparent; transition: 0.2s; border-radius: 8px; background: #1a0f0c;}
+        .char-opt.selected { border-color: var(--gold); background: #78350f; transform: scale(1.1); box-shadow: 0 0 10px var(--gold); }
+        .player-tag { background: #3e2723; border: 2px solid var(--gold); padding: 1vh 2vh; font-weight: bold; border-radius: 8px; display: inline-flex; align-items: center; gap: 1vw; font-size: 2vh; margin: 0.5vh; }
+
+        /* === 畫面 2：主遊戲區 (平板一頁式彈性排版) === */
+        #screen-game { 
+            background: url('https://www.transparenttextures.com/patterns/black-scales.png') #090d16; 
+            flex-direction: row; justify-content: space-between; padding: 2vh; gap: 2vw; 
+        }
+        
+        /* 左側：玩家列表 (寬度 25%) */
+        .left-panel { width: 25vw; height: 96vh; display: flex; flex-direction: column; gap: 1vh; overflow-y: auto; padding: 1vh; }
+        .player-card { background: #1a0f0c; border: 2px solid #4a2f24; padding: 1vh; display: flex; align-items: center; gap: 1vw; opacity: 0.6; border-radius: 8px; }
+        .player-card.active-turn { border-color: #4ade80; background: #064e3b; opacity: 1; transform: translateX(1vw); box-shadow: -4px 4px 10px rgba(0,0,0,0.5); }
+        .card-sprite { font-size: 3.5vh; background: #000; width: 6vh; height: 6vh; display: flex; align-items: center; justify-content: center; border-radius: 50%; border: 2px solid #555; }
+        .card-info { flex: 1; }
+        .card-name { font-weight: 900; font-size: 2vh; margin: 0 0 0.5vh 0; color: var(--gold); }
+        .card-stats { font-size: 1.6vh; font-weight: bold; display: flex; justify-content: space-between;}
+
+        /* 中間：棋盤區 (寬度 50%，強制正方形維持比例) */
+        .center-panel { width: 50vw; height: 96vh; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+        .board-wrapper { width: 100%; aspect-ratio: 1 / 1; max-height: 90vh; max-width: 90vh; position: relative; background: rgba(0,0,0,0.4); border: 6px solid #4a2f24; border-radius: 12px; box-shadow: inset 0 0 20px #000, 0 10px 20px #000; }
+        
+        /* 網格系統：7x7，格子佔 14.28% */
+        .tile { position: absolute; width: 14.28%; height: 14.28%; border: 2px solid #1a0f0c; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; box-shadow: inset 0 0 10px rgba(0,0,0,0.5); }
+        .tile-icon { font-size: 3.5vmin; margin-bottom: 0.5vh; }
+        .tile-name { font-size: 1.5vmin; font-weight: 900; line-height: 1.2; text-shadow: 1px 1px 0 #000; }
+        .tile-price { font-size: 1.2vmin; color: var(--gold); margin-top: 0.2vh; font-weight: bold; }
+        
+        /* 地板樣式 */
+        .tile.start { background: linear-gradient(135deg, #78350f, #451a03); border-color: var(--gold); }
+        .tile.property { background: linear-gradient(135deg, #0f172a, #020617); border-color: #38bdf8; }
+        .tile.chance { background: linear-gradient(135deg, #4c1d95, #2e1065); border-color: #c084fc; }
+        .tile.rest { background: linear-gradient(135deg, #064e3b, #022c22); border-color: #4ade80; }
+
+        .owner-tag { position: absolute; top: -5px; right: -5px; width: 3vmin; height: 3vmin; background: var(--gold); border: 2px solid #000; border-radius: 50%; display: flex; justify-content: center; align-items: center; font-size: 1.8vmin; color: #000; box-shadow: 2px 2px 0 #000; z-index: 5; }
+        .level-stars { position: absolute; bottom: 2px; font-size: 1.2vmin; color: var(--gold); letter-spacing: -1px; text-shadow: 1px 1px 0 #000;}
+
+        /* 中央魔王區 (位於 7x7 的中間 5x5) */
+        .boss-area { position: absolute; left: 14.28%; top: 14.28%; width: 71.44%; height: 71.44%; display: flex; flex-direction: column; align-items: center; justify-content: center; background: radial-gradient(circle, rgba(153,27,27,0.3) 0%, transparent 70%); }
+        .boss-sprite { font-size: 12vmin; filter: drop-shadow(0 10px 10px rgba(0,0,0,0.8)); animation: bossBreath 2s infinite alternate; cursor: pointer; transition: 0.1s;}
+        .boss-sprite.hit { transform: scale(0.9) rotate(-10deg); filter: sepia(1) hue-rotate(-50deg) saturate(5); }
+        .boss-hp-bg { width: 60%; height: 2vh; background: #000; border: 2px solid #fff; border-radius: 10px; margin-top: 2vh; overflow: hidden; position: relative;}
+        .boss-hp-fill { height: 100%; background: linear-gradient(90deg, #ef4444, #991b1b); width: 100%; transition: width 0.3s ease-out; }
+        .boss-hp-text { position: absolute; width: 100%; text-align: center; top: 0; font-size: 1.5vh; font-weight: bold; line-height: 2vh; color: #fff; text-shadow: 1px 1px 0 #000;}
+        .boss-name { font-size: 2.5vmin; font-weight: bold; color: #f87171; text-shadow: 2px 2px 0 #000; margin-top: 1vh;}
+
+        .sprite-piece { position: absolute; width: 4vmin; height: 4vmin; z-index: 20; display: flex; align-items: center; justify-content: center; font-size: 3.5vmin; transition: all 0.4s ease-out; filter: drop-shadow(2px 2px 2px rgba(0,0,0,0.8)); margin-left: -2vmin; margin-top: -2vmin;}
+
+        /* 右側：控制區與戰報 (寬度 20vw) */
+        .right-panel { width: 22vw; height: 96vh; display: flex; flex-direction: column; gap: 2vh; }
+        
+        .dice-area { display: flex; flex-direction: column; align-items: center; gap: 2vh; padding: 2vh; }
+        .turn-text { font-size: 2vh; font-weight: bold; text-align: center; color: #4ade80; }
+        .dice-display { width: 10vh; height: 10vh; background: #f8fafc; color: #000; border: 4px solid #334155; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 5vh; font-weight: bold; box-shadow: inset 0 0 10px rgba(0,0,0,0.2), 0 5px 15px rgba(0,0,0,0.5); }
+        
+        .log-list { flex: 1; overflow-y: auto; list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 1vh; font-size: 1.5vh; }
+        .log-item { background: rgba(0,0,0,0.5); border-left: 4px solid var(--gold); padding: 1vh; line-height: 1.4; border-radius: 0 4px 4px 0;}
+
+        /* === 彈出視窗 (防重疊) === */
+        .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.85); z-index: 200; align-items: center; justify-content: center; }
+        .modal-box { background: url('https://www.transparenttextures.com/patterns/wood-pattern.png') #4a2f24; padding: 4vh; width: 50vw; max-width: 500px; border: 6px solid #1a0f0c; text-align: center; box-shadow: 0 10px 30px #000; border-radius: 12px; }
+        .modal-box h2 { margin-top: 0; color: var(--gold); font-size: 3vh; text-shadow: 2px 2px 0 #000; }
+        .modal-btn-group { display: flex; gap: 1vw; justify-content: center; margin-top: 3vh; }
+
+        .top-tools { position: absolute; top: 2vh; right: 2vw; display: flex; gap: 1vw; z-index: 100; }
+        
+        .floating-text { position: absolute; font-size: 3vmin; font-weight: 900; color: #ef4444; text-shadow: 2px 2px 0 #000; animation: floatUp 1s forwards ease-out; pointer-events: none; z-index: 50; }
+        
+        @keyframes floatUp { 0% { opacity: 1; transform: translateY(0); } 100% { opacity: 0; transform: translateY(-5vh); } }
+        @keyframes bossBreath { 0% { transform: translateY(0); } 100% { transform: translateY(-2vh); } }
+    </style>
+</head>
+<body>
+
+    <!-- 老師控制台 -->
+    <div class="modal-overlay" id="teacher-modal">
+        <div class="modal-box">
+            <h2>👩‍🏫 老師魔導書 (控制台)</h2>
+            <div style="text-align: left; margin: 2vh 0;">
+                <label style="color: #cbd5e1; font-size: 2vh;">法術目標：</label>
+                <select id="teacher-target" style="width: 100%; padding: 1vh; margin-top: 1vh; font-size: 2vh; font-weight: bold; background: #1a0f0c; color: var(--gold); border: 2px solid #000;">
+                </select>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 1.5vh;">
+                <button class="rpg-btn" onclick="teacherAction('dice', 1)">+1 骰子 🎲 (發言獎勵)</button>
+                <button class="rpg-btn" onclick="teacherAction('dice', 3)">+3 骰子 🎲 (解題成功)</button>
+                <button class="rpg-btn" style="background: linear-gradient(180deg, #10b981, #047857);" onclick="teacherAction('coin', 50)">+50 金幣 🪙 (團隊合作)</button>
+            </div>
+            <button class="rpg-btn" style="margin-top: 3vh; width: 100%; background: linear-gradient(180deg, #64748b, #334155);" onclick="closeModal('teacher-modal')">✖ 闔上魔導書</button>
+        </div>
+    </div>
+
+    <!-- 行動/事件 視窗 -->
+    <div class="modal-overlay" id="action-modal">
+        <div class="modal-box">
+            <div id="action-icon" style="font-size: 8vh; margin-bottom: 2vh;">🏠</div>
+            <h2 id="action-title">事件</h2>
+            <p id="action-desc" style="font-size: 2.2vh; color: #fff; line-height: 1.6; text-shadow: 1px 1px 0 #000;"></p>
+            <div class="modal-btn-group" id="action-btns"></div>
+        </div>
+    </div>
+
+    <!-- 頂端工具列 -->
+    <div class="top-tools" id="game-tools" style="display: none;">
+        <button class="rpg-btn" style="background:linear-gradient(180deg, #0284c7, #0369a1);" onclick="document.getElementById('teacher-modal').style.display='flex'">⚙️ 老師選單</button>
+        <button class="rpg-btn danger" onclick="backToClasses()">🔙 回班級</button>
+    </div>
+
+    <!-- ================= 畫面 0：班級選擇大廳 ================= -->
+    <div class="screen active" id="screen-classes">
+        <div class="rpg-panel lobby-container">
+            <h1>🏫 科學冒險公會 (存檔區)</h1>
+            <div style="background: rgba(0,0,0,0.5); padding: 2vh; border: 2px dashed var(--gold); margin: 2vh 0; border-radius: 8px;">
+                <input type="text" id="new-class-name" placeholder="輸入班級 (如: 701班)" style="padding: 1.5vh; font-size: 2vh; font-weight: bold; width: 25vw; text-align: center;">
+                <button class="rpg-btn" onclick="createClass()">➕ 建立</button>
+            </div>
+            <div id="class-list-ui"></div>
+        </div>
+    </div>
+
+    <!-- ================= 畫面 1：學生報到 ================= -->
+    <div class="screen" id="screen-lobby">
+        <div class="rpg-panel lobby-container">
+            <h1 id="lobby-class-title">---班 報到處</h1>
+            <div style="color:#aaa; font-size:2vh; margin-bottom:2vh;">請選擇你的英雄外貌：</div>
+            
+            <div class="char-grid" id="char-selector">
+                <!-- 16種 RPG 頭像 -->
+                <div class="char-opt selected" onclick="selectLobbyChar('🦸‍♂️', this)">🦸‍♂️</div>
+                <div class="char-opt" onclick="selectLobbyChar('🧝‍♀️', this)">🧝‍♀️</div>
+                <div class="char-opt" onclick="selectLobbyChar('🧙‍♂️', this)">🧙‍♂️</div>
+                <div class="char-opt" onclick="selectLobbyChar('🥷', this)">🥷</div>
+                <div class="char-opt" onclick="selectLobbyChar('🤴', this)">🤴</div>
+                <div class="char-opt" onclick="selectLobbyChar('🧛‍♂️', this)">🧛‍♂️</div>
+                <div class="char-opt" onclick="selectLobbyChar('🧜‍♀️', this)">🧜‍♀️</div>
+                <div class="char-opt" onclick="selectLobbyChar('🧞‍♂️', this)">🧞‍♂️</div>
+                <div class="char-opt" onclick="selectLobbyChar('🧟', this)">🧟</div>
+                <div class="char-opt" onclick="selectLobbyChar('👨‍🚀', this)">👨‍🚀</div>
+                <div class="char-opt" onclick="selectLobbyChar('👽', this)">👽</div>
+                <div class="char-opt" onclick="selectLobbyChar('🤖', this)">🤖</div>
+                <div class="char-opt" onclick="selectLobbyChar('🦄', this)">🦄</div>
+                <div class="char-opt" onclick="selectLobbyChar('🐱', this)">🐱</div>
+                <div class="char-opt" onclick="selectLobbyChar('🦊', this)">🦊</div>
+                <div class="char-opt" onclick="selectLobbyChar('🦉', this)">🦉</div>
+            </div>
+            
+            <div style="margin-bottom: 2vh;">
+                <input type="text" id="new-player-name" placeholder="輸入勇者姓名..." style="padding: 1.5vh; font-size: 2vh; font-weight: bold; width: 20vw; text-align: center;">
+                <button class="rpg-btn" onclick="addPlayer()">加入隊伍</button>
+            </div>
+            
+            <div class="player-list" id="player-list-ui"></div>
+            <button class="rpg-btn" onclick="enterGame()" style="font-size: 2.5vh; padding: 2vh 4vw; width: 100%;">🚀 討伐魔王，出發！</button>
+        </div>
+    </div>
+
+    <!-- ================= 畫面 2：主遊戲區 ================= -->
+    <div class="screen" id="screen-game">
+        <!-- 左側面板 -->
+        <div class="rpg-panel left-panel" id="hud-players"></div>
+
+        <!-- 中間棋盤 (7x7, 24格環狀) -->
+        <div class="center-panel">
+            <div class="board-wrapper" id="pixel-board">
+                <!-- 中央魔王區 -->
+                <div class="boss-area">
+                    <div class="boss-name" id="boss-name">LV1 災厄飛龍</div>
+                    <div class="boss-sprite" id="boss-sprite" onclick="attackBossTest()">🐉</div>
+                    <div class="boss-hp-bg">
+                        <div class="boss-hp-fill" id="boss-hp-fill"></div>
+                        <div class="boss-hp-text" id="boss-hp-text">1000 / 1000</div>
+                    </div>
+                </div>
+                <!-- 棋盤格子由 JS 生成 -->
+            </div>
+        </div>
+
+        <!-- 右側面板 -->
+        <div class="rpg-panel right-panel">
+            <div class="rpg-panel dice-area">
+                <div class="turn-text" id="turn-indicator">等待中...</div>
+                <div class="dice-display" id="dice-box">🎲</div>
+                <button class="rpg-btn" id="roll-btn" onclick="rollDice()" style="font-size: 2.5vh; padding: 1.5vh 3vh; width: 100%;">擲骰子！</button>
+            </div>
+            
+            <div class="rpg-panel" style="flex: 1; display: flex; flex-direction: column; padding: 1vh; overflow: hidden;">
+                <h3 style="margin: 0 0 1vh 0; color: var(--gold); text-align: center; font-size: 2vh; border-bottom: 2px solid #4a2f24; padding-bottom: 1vh;">📜 冒險日誌</h3>
+                <ul class="log-list" id="log-list"></ul>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        /* ====== 核心資料 (v4版 7x7 棋盤, 24格) ====== */
+        let db = JSON.parse(localStorage.getItem('scientific_rpg_db_v4')) || {};
+        let activeClass = null; 
+        let gameState = { players: [], properties: {}, turnIndex: 0, boss: { level: 1, hp: 1000, maxHp: 1000 } }; 
+        let isMoving = false;
+        let selectedChar = '🦸‍♂️';
+
+        // 7x7 網格，共24格外圈
+        const boardLayout = [
+            // 上排 (x:0~6, y:0)
+            {x:0, y:0, type:'start', name:'王城起點', icon:'🏰', desc:'經過得50'}, 
+            {x:1, y:0, type:'property', name:'史萊姆林', icon:'🌲', price:40}, 
+            {x:2, y:0, type:'property', name:'元素礦坑', icon:'⛏️', price:40}, 
+            {x:3, y:0, type:'chance', name:'命運', icon:'❓'}, 
+            {x:4, y:0, type:'property', name:'魔法學院', icon:'🏫', price:50}, 
+            {x:5, y:0, type:'property', name:'基因神殿', icon:'🧬', price:50}, 
+            {x:6, y:0, type:'rest', name:'旅人營地', icon:'⛺'}, 
+            // 右排 (x:6, y:1~5)
+            {x:6, y:1, type:'property', name:'天文高塔', icon:'🪐', price:60}, 
+            {x:6, y:2, type:'chance', name:'機會', icon:'🌟'}, 
+            {x:6, y:3, type:'property', name:'化石荒原', icon:'🦕', price:60}, 
+            {x:6, y:4, type:'property', name:'磁浮遺址', icon:'🚝', price:70}, 
+            {x:6, y:5, type:'chance', name:'命運', icon:'❓'}, 
+            // 下排 (x:6~0, y:6)
+            {x:6, y:6, type:'rest', name:'大圖書館', icon:'📚'}, 
+            {x:5, y:6, type:'property', name:'高壓電廠', icon:'⚡', price:80}, 
+            {x:4, y:6, type:'chance', name:'機會', icon:'🌟'}, 
+            {x:3, y:6, type:'property', name:'地質火山口', icon:'🌋', price:90}, 
+            {x:2, y:6, type:'property', name:'粒子加速器', icon:'🌀', price:90}, 
+            {x:1, y:6, type:'property', name:'深海潛艦', icon:'🌊', price:100}, 
+            {x:0, y:6, type:'rest', name:'妖精泉水', icon:'⛲'}, 
+            // 左排 (x:0, y:5~1)
+            {x:0, y:5, type:'property', name:'航太發射站', icon:'🚀', price:100}, 
+            {x:0, y:4, type:'chance', name:'命運', icon:'❓'}, 
+            {x:0, y:3, type:'property', name:'火星前哨站', icon:'🛸', price:110}, 
+            {x:0, y:2, type:'chance', name:'機會', icon:'🌟'}, 
+            {x:0, y:1, type:'property', name:'鍊金密室', icon:'🧪', price:120}
+        ];
+
+        const tollRates = { 1: 20, 2: 45, 3: 90 }; 
+        const upgradeCosts = { 1: 50, 2: 60 }; 
+
+        const chanceCards = [
+            { icon: "🎉", text: "解開了未知的科學公式！公會賞金 50 金幣！", effect: (p) => p.coins += 50 },
+            { icon: "💥", text: "煉金術失敗，引發爆炸... 支付修理費 20 金幣。", effect: (p) => p.coins = Math.max(0, p.coins - 20) },
+            { icon: "✨", text: "在遺跡中發現魔法石！獲得 1 顆額外骰子！", effect: (p) => p.dice += 1 },
+            { icon: "🛡️", text: "打敗了流浪哥布林！獲得 30 金幣！", effect: (p) => p.coins += 30 },
+            { icon: "🦠", text: "誤闖毒氣沼澤，購買解毒藥劑花費 15 金幣。", effect: (p) => p.coins = Math.max(0, p.coins - 15) }
+        ];
+
+        window.onload = () => { renderClassList(); };
+
+        function showScreen(id) {
+            document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+            document.getElementById(id).classList.add('active');
+            document.getElementById('game-tools').style.display = (id === 'screen-game') ? 'flex' : 'none';
+        }
+
+        function saveData() {
+            if(activeClass) {
+                db[activeClass] = gameState;
+                localStorage.setItem('scientific_rpg_db_v4', JSON.stringify(db));
+            }
+        }
+
+        /* ====== 班級大廳 ====== */
+        function createClass() {
+            const name = document.getElementById('new-class-name').value.trim();
+            if(!name) return alert("請輸入班級名稱！");
+            if(db[name]) return alert("班級已存在！");
+            db[name] = { players: [], properties: {}, turnIndex: 0, boss: {level: 1, hp: 1000, maxHp: 1000} };
+            document.getElementById('new-class-name').value = ''; renderClassList();
+        }
+
+        function renderClassList() {
+            const list = document.getElementById('class-list-ui'); list.innerHTML = '';
+            for(let className in db) {
+                const pCount = db[className].players.length;
+                list.innerHTML += `<div class="rpg-panel" style="padding: 1.5vh; margin: 1vh 0; display: flex; justify-content: space-between; align-items: center;">
+                    <div style="text-align:left;"><h2 style="margin:0; color:var(--gold); font-size:2.5vh;">${className}</h2><span style="color:#aaa; font-size:1.5vh;">已有 ${pCount} 名勇者</span></div>
+                    <div><button class="rpg-btn" onclick="openClass('${className}')">進入</button> <button class="rpg-btn danger" onclick="deleteClass('${className}')">刪除</button></div>
+                </div>`;
+            }
+        }
+
+        function deleteClass(name) {
+            if(confirm(`確定刪除「${name}」？無法復原！`)) { delete db[name]; localStorage.setItem('scientific_rpg_db_v4', JSON.stringify(db)); renderClassList(); }
+        }
+
+        function openClass(name) {
+            activeClass = name; gameState = db[name];
+            // 確保舊存檔有 Boss 物件
+            if(!gameState.boss) gameState.boss = {level: 1, hp: 1000, maxHp: 1000};
+            
+            if(gameState.players.length === 0) {
+                document.getElementById('lobby-class-title').innerText = `${name} 報到處`;
+                renderLobbyPlayers(); showScreen('screen-lobby');
+            } else { enterGame(); }
+        }
+
+        function backToClasses() { saveData(); activeClass = null; renderClassList(); showScreen('screen-classes'); }
+
+        function selectLobbyChar(char, el) { selectedChar = char; document.querySelectorAll('.char-opt').forEach(c => c.classList.remove('selected')); el.classList.add('selected'); }
+        
+        function addPlayer() {
+            if(gameState.players.length >= 7) return alert("隊伍最多 7 人！");
+            const name = document.getElementById('new-player-name').value.trim();
+            if(!name) return;
+            gameState.players.push({ id: Date.now().toString(), name: name, sprite: selectedChar, coins: 150, dice: 3, pos: 0 }); 
+            document.getElementById('new-player-name').value = ''; renderLobbyPlayers(); saveData();
+        }
+        
+        function renderLobbyPlayers() {
+            const list = document.getElementById('player-list-ui'); list.innerHTML = '';
+            gameState.players.forEach(p => { list.innerHTML += `<div class="player-tag"><span>${p.sprite}</span> ${p.name}</div>`; });
+        }
+
+        /* ====== 主遊戲區 ====== */
+        function enterGame() {
+            if(gameState.players.length === 0) return alert("請加入學生！");
+            initBoard(); updateBossUI(); updateTeacherDropdown(); highlightTurn(); showScreen('screen-game');
+            addLog(`🚀 勇者隊伍進入圖板！魔王已甦醒！`);
+        }
+
+        function initBoard() {
+            const board = document.getElementById('pixel-board'); 
+            // 保留 boss-area，清除其他
+            const bossArea = board.querySelector('.boss-area');
+            board.innerHTML = ''; board.appendChild(bossArea);
+            
+            boardLayout.forEach((tile, index) => {
+                const div = document.createElement('div'); div.className = `tile ${tile.type}`;
+                // 使用百分比定位 (14.28% = 100/7)
+                div.style.left = (tile.x * 14.28) + '%';
+                div.style.top = (tile.y * 14.28) + '%';
+                
+                let priceText = tile.type === 'property' ? `<div class="tile-price">$${tile.price}</div>` : 
+                                tile.type === 'start' ? `<div class="tile-price">${tile.desc}</div>` : '';
+                let innerHTML = `<div class="tile-icon">${tile.icon}</div><div class="tile-name">${tile.name}</div>${priceText}`;
+                
+                const prop = gameState.properties[index];
+                if(prop) {
+                    const owner = gameState.players.find(p => p.id === prop.owner);
+                    if(owner) {
+                        innerHTML += `<div class="owner-tag">${owner.sprite}</div>`;
+                        innerHTML += `<div class="level-stars">${'⭐'.repeat(prop.level)}</div>`;
+                    }
+                }
+                div.innerHTML = innerHTML; board.appendChild(div);
+            });
+
+            gameState.players.forEach(p => {
+                const piece = document.createElement('div');
+                piece.id = `piece-${p.id}`; piece.className = 'sprite-piece'; piece.innerText = p.sprite;
+                board.appendChild(piece);
+            });
+            updateAllSpritePos();
+        }
+
+        function updateAllSpritePos() {
+            const posCounts = {};
+            gameState.players.forEach(p => { if(!posCounts[p.pos]) posCounts[p.pos] = []; posCounts[p.pos].push(p); });
+            for(let pos in posCounts) {
+                const occupants = posCounts[pos]; const coord = boardLayout[pos];
+                occupants.forEach((p, index) => {
+                    const piece = document.getElementById(`piece-${p.id}`);
+                    if(piece) {
+                        // 在 14.28% 的格子內微調
+                        const offX = (index % 3) * 2; 
+                        const offY = Math.floor(index / 3) * 2;
+                        piece.style.left = `calc(${coord.x * 14.28}% + 7.14% + ${offX}vmin)`; 
+                        piece.style.top = `calc(${coord.y * 14.28}% + 7.14% + ${offY}vmin)`;
+                    }
+                });
+            }
+        }
+
+        function highlightTurn() {
+            const cp = gameState.players[gameState.turnIndex];
+            const btn = document.getElementById('roll-btn');
+            const turnInd = document.getElementById('turn-indicator');
+            turnInd.innerText = `👉 輪到【${cp.name}】`;
+            
+            if(cp.dice <= 0) {
+                turnInd.style.color = '#f43f5e'; btn.innerText = '無骰子(跳過)'; btn.className = 'rpg-btn danger';
+            } else {
+                turnInd.style.color = '#4ade80'; btn.innerText = '擲骰子打王！'; btn.className = 'rpg-btn';
+            }
+            updateHUD(); saveData();
+        }
+
+        function updateHUD() {
+            const hud = document.getElementById('hud-players'); hud.innerHTML = '';
+            gameState.players.forEach((p, index) => {
+                const isActive = (index === gameState.turnIndex) ? 'active-turn' : '';
+                hud.innerHTML += `
+                    <div class="player-card ${isActive}">
+                        <div class="card-sprite">${p.sprite}</div>
+                        <div class="card-info">
+                            <div class="card-name">${p.name}</div>
+                            <div class="card-stats">
+                                <span style="color:var(--gold);">🪙 ${p.coins}</span>
+                                <span style="color:#38bdf8;">🎲 ${p.dice}</span>
+                            </div>
+                        </div>
+                    </div>`;
+            });
+        }
+
+        function nextTurn() {
+            gameState.turnIndex = (gameState.turnIndex + 1) % gameState.players.length;
+            highlightTurn(); document.getElementById('roll-btn').disabled = false;
+        }
+
+        /* ====== 骰子與打王機制 ====== */
+        function rollDice() {
+            if(isMoving) return;
+            const p = gameState.players[gameState.turnIndex];
+            if(p.dice <= 0) { addLog(`⚠️ 【${p.name}】沒有骰子，回合跳過。`); return nextTurn(); }
+            
+            isMoving = true; p.dice--; updateHUD(); document.getElementById('roll-btn').disabled = true;
+
+            let count = 0;
+            const interval = setInterval(() => {
+                document.getElementById('dice-box').innerText = Math.floor(Math.random() * 6 + 1);
+                count++;
+                if(count > 8) {
+                    clearInterval(interval);
+                    const steps = Math.floor(Math.random() * 6 + 1);
+                    document.getElementById('dice-box').innerText = steps;
+                    
+                    // 打王傷害
+                    attackBoss(p, steps);
+                }
+            }, 60);
+        }
+
+        function attackBoss(p, steps) {
+            const dmg = steps * 10;
+            gameState.boss.hp = Math.max(0, gameState.boss.hp - dmg);
+            
+            // 視覺特效
+            const sprite = document.getElementById('boss-sprite');
+            sprite.classList.add('hit');
+            setTimeout(() => sprite.classList.remove('hit'), 200);
+            
+            showFloat(`-${dmg} ⚔️`, 'boss', document.querySelector('.boss-area'));
+            addLog(`⚔️ 【${p.name}】對飛龍造成 ${dmg} 點傷害！`);
+            updateBossUI();
+
+            if(gameState.boss.hp <= 0) {
+                setTimeout(() => bossDefeated(), 500);
+                // 延遲移動以免同時發生太亂
+                setTimeout(() => movePlayer(p, steps), 2500);
+            } else {
+                setTimeout(() => movePlayer(p, steps), 500);
+            }
+        }
+
+        function updateBossUI() {
+            const b = gameState.boss;
+            document.getElementById('boss-name').innerText = `LV${b.level} 災厄飛龍`;
+            document.getElementById('boss-hp-text').innerText = `${b.hp} / ${b.maxHp}`;
+            document.getElementById('boss-hp-fill').style.width = `${(b.hp / b.maxHp) * 100}%`;
+        }
+
+        function bossDefeated() {
+            addLog(`🏆 【全班通告】災厄飛龍已被討伐！`);
+            gameState.players.forEach(p => { p.coins += 50; });
+            addLog(`💰 所有勇者獲得 50 金幣賞金！`);
+            
+            // 升級魔王
+            gameState.boss.level++;
+            gameState.boss.maxHp = Math.floor(gameState.boss.maxHp * 1.5);
+            gameState.boss.hp = gameState.boss.maxHp;
+            
+            openActionModal("🏆", "討伐成功！", `你們打倒了災厄飛龍！<br><br>全班每人獲得 <b style="color:var(--gold)">50 金幣</b>！<br><br>但更強大的 LV${gameState.boss.level} 飛龍即將降臨...`, 
+                [{text: "繼續冒險", color:"#38bdf8", action: () => { closeModal('action-modal'); updateBossUI(); updateHUD(); }}]
+            );
+        }
+
+        /* 移動邏輯 */
+        function movePlayer(p, steps) {
+            let taken = 0;
+            const moveInterval = setInterval(() => {
+                p.pos = (p.pos + 1) % boardLayout.length;
+                updateAllSpritePos();
+                if(p.pos === 0) { p.coins += 50; showFloat(`+50🪙`, p.id); addLog(`🏰 【${p.name}】經過王城，獲得補給 50 金幣！`); }
+                taken++;
+                if(taken >= steps) { clearInterval(moveInterval); setTimeout(() => triggerTileEvent(p), 400); }
+            }, 200);
+        }
+
+        // --- 格子事件 ---
+        function triggerTileEvent(p) {
+            const tileIdx = p.pos; const tile = boardLayout[tileIdx];
+
+            if(tile.type === 'property') {
+                const prop = gameState.properties[tileIdx];
+                if(!prop) {
+                    if(p.coins >= tile.price) {
+                        openActionModal("🏠", `發現新領地：${tile.name}`, 
+                            `這是一塊空地 (價值 <b style="color:var(--gold);">${tile.price} 金幣</b>)。<br><br>要買下它嗎？(過路費：${tollRates[1]} 金幣)`,
+                            [
+                                { text: `💰 購買 ($${tile.price})`, color: "#fbbf24", action: () => buyProperty(p, tileIdx, tile.price) },
+                                { text: "✖ 先不要", color: "#64748b", action: () => { closeModal('action-modal'); endAction(); } }
+                            ]
+                        );
+                    } else {
+                        openActionModal("💸", `資金不足：${tile.name}`, 
+                            `價值 <b style="color:var(--gold);">${tile.price} 金幣</b>。<br>你只有 <b style="color:#f43f5e;">${p.coins} 金幣</b>，無法購買！`,
+                            [{ text: "✖ 繼續努力", color: "#64748b", action: () => { closeModal('action-modal'); endAction(); } }]
+                        );
+                    }
+                } else if(prop.owner !== p.id) {
+                    const owner = gameState.players.find(x => x.id === prop.owner);
+                    const toll = tollRates[prop.level];
+                    const actualPay = Math.min(p.coins, toll); 
+                    p.coins -= actualPay; owner.coins += actualPay;
+                    showFloat(`-${actualPay}🪙`, p.id);
+                    addLog(`💸 【${p.name}】踩到【${owner.name}】的領地，付了 ${actualPay} 金幣。`);
+                    endAction();
+                } else {
+                    if(prop.level < 3) {
+                        const upCost = upgradeCosts[prop.level];
+                        const nextToll = tollRates[prop.level + 1];
+                        if(p.coins >= upCost) {
+                            openActionModal("🌟", `升級領地：${tile.name}`, 
+                                `目前 LV${prop.level}。<br>要花 <b style="color:var(--gold);">${upCost} 金幣</b> 升級嗎？<br>(過路費提升至：${nextToll} 金幣)`,
+                                [
+                                    { text: `🚀 升級 ($${upCost})`, color: "#4ade80", action: () => upgradeProperty(p, tileIdx, upCost) },
+                                    { text: "✖ 保持原狀", color: "#64748b", action: () => { closeModal('action-modal'); endAction(); } }
+                                ]
+                            );
+                        } else {
+                            openActionModal("💸", `升級資金不足：${tile.name}`, 
+                                `升級需要 <b style="color:var(--gold);">${upCost} 金幣</b>，你只有 <b style="color:#f43f5e;">${p.coins} 金幣</b>！`,
+                                [{ text: "✖ 繼續存錢", color: "#64748b", action: () => { closeModal('action-modal'); endAction(); } }]
+                            );
+                        }
+                    } else {
+                        addLog(`🏠 【${p.name}】在自己的滿級領地休息。`); endAction();
+                    }
+                }
+            } 
+            else if(tile.type === 'chance') {
+                const card = chanceCards[Math.floor(Math.random() * chanceCards.length)];
+                openActionModal("❓", "機會與命運", `<div style="font-size:8vh; margin:1vh 0;">${card.icon}</div>${card.text}`,
+                    [ { text: "確認", color: "#38bdf8", action: () => { closeModal('action-modal'); card.effect(p); showFloat("✨", p.id); addLog(`抽卡：${card.text}`); endAction(); } } ]
+                );
+            }
+            else { endAction(); }
+        }
+
+        function buyProperty(p, tileIdx, cost) {
+            p.coins -= cost; gameState.properties[tileIdx] = { owner: p.id, level: 1 };
+            addLog(`🎉 【${p.name}】買下了【${boardLayout[tileIdx].name}】！`);
+            initBoard(); closeModal('action-modal'); endAction();
+        }
+
+        function upgradeProperty(p, tileIdx, cost) {
+            p.coins -= cost; gameState.properties[tileIdx].level += 1;
+            addLog(`🚀 【${p.name}】將領地升級到了 LV${gameState.properties[tileIdx].level}！`);
+            initBoard(); closeModal('action-modal'); endAction();
+        }
+
+        function endAction() { updateHUD(); saveData(); isMoving = false; setTimeout(nextTurn, 800); }
+
+        /* UI 工具 */
+        function openActionModal(icon, title, desc, buttons) {
+            document.getElementById('action-icon').innerText = icon;
+            document.getElementById('action-title').innerText = title;
+            document.getElementById('action-desc').innerHTML = desc;
+            const btnGroup = document.getElementById('action-btns'); btnGroup.innerHTML = '';
+            buttons.forEach(b => {
+                const btn = document.createElement('button'); btn.className = 'rpg-btn'; btn.style.background = b.color;
+                if(b.color === '#64748b') btn.style.color = '#fff';
+                btn.innerText = b.text; btn.onclick = b.action; btnGroup.appendChild(btn);
+            });
+            document.getElementById('action-modal').style.display = 'flex';
+        }
+        function closeModal(id) { document.getElementById(id).style.display = 'none'; }
+
+        /* 老師控制台 */
+        function updateTeacherDropdown() {
+            const select = document.getElementById('teacher-target'); select.innerHTML = '<option value="all">🌟 全班所有人</option>';
+            gameState.players.forEach(p => { select.innerHTML += `<option value="${p.id}">${p.sprite} ${p.name}</option>`; });
+        }
+        function teacherAction(type, amount) {
+            const targetId = document.getElementById('teacher-target').value;
+            if(targetId === 'all') { gameState.players.forEach(p => applyReward(p, type, amount)); addLog(`👩‍🏫 老師對【全班】施放了輔助魔法！`); } 
+            else { const p = gameState.players.find(x => x.id == targetId); if(p) { applyReward(p, type, amount); addLog(`👩‍🏫 老師對【${p.name}】施放了輔助魔法！`); } }
+            updateHUD(); saveData(); closeModal('teacher-modal');
+        }
+        function applyReward(p, type, amount) {
+            if(type === 'dice') { p.dice = Math.max(0, p.dice + amount); showFloat(`+${amount}🎲`, p.id); } 
+            else if(type === 'coin') { p.coins += amount; showFloat(`+${amount}🪙`, p.id); }
+        }
+        function addLog(text) {
+            const list = document.getElementById('log-list'), li = document.createElement('li'); li.className = 'log-item'; li.innerText = text;
+            list.prepend(li); if(list.children.length > 30) list.removeChild(list.lastChild);
+        }
+        function showFloat(text, playerId, parentOverride = null) {
+            let container = parentOverride;
+            let left = '50%', top = '50%';
+            if(!container) {
+                container = document.getElementById('pixel-board');
+                const piece = document.getElementById(`piece-${playerId}`);
+                if(!piece) return;
+                left = piece.style.left; top = piece.style.top;
+            }
+            const float = document.createElement('div'); float.className = 'floating-text'; float.innerText = text;
+            float.style.left = left; float.style.top = top;
+            container.appendChild(float); setTimeout(() => float.remove(), 1000);
+        }
+    </script>
+</body>
+</html>
